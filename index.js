@@ -4,8 +4,9 @@ const cors = require("cors");
 const logger = require('morgan');
 const app = express();
 require('dotenv').config()
-const redis = require("redis");
+const db = require("./src/utils/redis");
 
+const rClient = db.init();
 
 app.use(cors());
 
@@ -16,26 +17,15 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(logger('dev'))
 
-let redisClient;
 
-(async () => {
-  redisClient = redis.createClient();
-
-  redisClient.on("error", (error) => console.error(`Error : ${error}`));
-
-  await redisClient.connect();
-})();
 
 app.get("/", (req, res) => {
   res.redirect("https://www.youtube.com/watch?v=4J0eu55kYWY")
 });
 
 // routes
-require("./src/routes/search")(app);
+require("./src/routes/search")(app, rClient);
 
 // set port, listen for requests
 const PORT = process.env.PORT || 4482;
-app.listen(PORT, () => {
-
-
-});
+app.listen(PORT, () => {});

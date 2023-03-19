@@ -1,6 +1,6 @@
 const controller = require("../controllers/search");
 
-module.exports = function(app) {
+module.exports = function(app, rClient) {
     app.use(function(req, res, next) {
       res.header(
         "Access-Control-Allow-Headers",
@@ -15,7 +15,9 @@ module.exports = function(app) {
   
     
     app.post("/api/search", controller.search)
-    app.get("/api/anime/:id", controller.anime)
-    app.get("/api/manga/:id", controller.manga)
-    app.get("/api/ranobe/:id", controller.ranobe)
+    app.get("/api/anime/:id/", controller.anime)
+    /*app.get("/api/anime/:id/themes", controller.themes)
+    app.get("/api/manga/:id/", controller.manga)
+    app.get("/api/ranobe/:id/", controller.ranobe)*/
+
   };
