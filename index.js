@@ -4,9 +4,10 @@ const cors = require("cors");
 const logger = require('morgan');
 const app = express();
 require('dotenv').config()
-const db = require("./src/utils/redis");
 
-const rClient = db.init();
+
+
+
 
 app.use(cors());
 
@@ -24,8 +25,10 @@ app.get("/", (req, res) => {
 });
 
 // routes
-require("./src/routes/search")(app, rClient);
+require("./src/routes/search")(app);
 
 // set port, listen for requests
-const PORT = process.env.PORT || 4482;
-app.listen(PORT, () => {});
+const PORT = process.env.PORT || 8642;
+app.listen(PORT, () => {
+  console.log("started server")
+});

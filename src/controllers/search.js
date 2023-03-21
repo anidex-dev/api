@@ -1,5 +1,20 @@
 const axios = require("axios")
-const db = require("../utils/redis")
+const redis = require("redis");
+
+let redisClient;
+(async () => {
+  redisClient = redis.createClient({
+    url: "redis://:u8yFi16D0bmUtQl3Srm@194.87.199.28:52412"
+  });
+
+  redisClient.on("error", (error) => console.error(`Error : ${error}`));
+
+  redisClient.on("connect", () => {
+    console.log('✅ connect redis success !')
+})
+  
+  await redisClient.connect();
+})();
 
 
 exports.search = async (req, res) => {
@@ -17,21 +32,37 @@ exports.search = async (req, res) => {
 }
 
 exports.anime = async (req, res) => {
-    const redisClient = rClient
     const id = req.params.id;
+    
     let data
     try {
         const cacheResults = await redisClient.get(id)
         if (cacheResults) {
             data = JSON.parse(cacheResults)
         } else {
-            data = await getAnime(id)
-            await redisClient.set(id, JSON.stringify(data))
+            data = await getAnime(id).then((data) => {
+              return data
+            })
+            if (data != "not found") {
+              await redisClient.set(id, JSON.stringify(data), {
+                EX: 604800, //7 дней
+                NX: true,
+              })
+            }
+            
+            
         }
-        res.send({
+        if (data == "not found") {
+          res.status(404).send({
+            ok: false,
+            error: "Not Found",
+          });
+        } else {
+          res.status(200).send({
             ok: true,
             data: data,
           });
+        }
     } catch(error) {
         res.status(503).send({ok: false, error: "Temporary unavailable."});
         console.error(error)
@@ -40,16 +71,14 @@ exports.anime = async (req, res) => {
 }
 
 async function getAnime(id) {
-    axios.get(encodeURI(`https://shikimori.one/api/animes/${id}`), {
-        headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36"
-          }
-    })
-    .then((data) => {
+  
+    
+        
         var queryid = `query {
-        Media(idMal: ${data.id}) {
+        Media(idMal: ${id}) {
             id
             countryOfOrigin
+            description
     coverImage {
       extraLarge
       large
@@ -101,11 +130,12 @@ async function getAnime(id) {
       }
     }
 }`
-    var varibls = {id: data.id}
-    axios.all([
+    var varibls = {}
+    return axios.all([
         axios.get(`https://kodikapi.com/search?token=f72d17af17189dbbc5f2dd03271c74fc&with_episodes=true&shikimori_id=${id}&with_material_data=true`),
         axios.get(`https://smotret-anime.ru/api/series?myAnimeListId=${id}`),
         axios.get(`https://arm.haglund.dev/api/v2/ids?source=myanimelist&id=${id}`),
+        axios.get(`https://api.jikan.moe/v4/anime/${id}/full`),
         axios({
           method: 'post',
           url: "https://graphql.anilist.co/",
@@ -119,7 +149,8 @@ async function getAnime(id) {
           }
         })
     ])
-      .then(axios.spread((datakp, datas, datam, dataid) => {
+      .then(axios.spread((datakp, datas, datam, data, dataid) => {
+        
         try {
         var kp_poster = datakp.data.results[0].material_data.poster_url
         var kp_slogan = datakp.data.results[0].material_data.slogan
@@ -154,7 +185,7 @@ async function getAnime(id) {
         var imdb_id = null
        }
        try {
-           var anime_planet = datam.data.anime-planet
+           var anime_planet = datam.data["anime-planet"]
            var anisearch = datam.data.anisearch
            var kitsu = datam.data.kitsu
            var notify_moe = datam.data["notify-moe"]
@@ -325,40 +356,31 @@ for(var c = 0; c < datas.data.data[0].genres.length;c++) {
 }
 
 var studios = []
-for(var c = 0; c < data.studios.length;c++) {
+for(var c = 0; c < data.data.data.studios.length;c++) {
   studios.push(
     {
-      id: data.studios[c].id,
-      name: data.studios[c].name,
-      logo: data.studios[c].image == null ? null : `https://shikimori.one${data.studios[c].image}`
+      id: data.data.data.studios[c].mal_id,
+      name: data.data.data.studios[c].name
       
     }
   )
 }
-switch(data.rating) {
-  case "g":
+switch(data.data.data.rating.split(" -")[0]) {
+  case "G":
     var rating = "G"
     var rating_desc = "Нет возрастных ограничений"
 break
-  case "pg":
+  case "PG":
     var rating = "PG"
     var rating_desc = "Рекомендуется присутствие родителей"
 break
-  case "pg_13":
+  case "PG-13":
     var rating = "PG-13"
     var rating_desc = "Детям до 13 лет просмотр нежелателен"
 break
-  case "r":
+  case "R":
     var rating = "R-17"
     var rating_desc = "Лицам до 17 лет обязательно присутствие взрослого"
-break
-  case "r_plus":
-    var rating = "R+"
-    var rating_desc = "Лицам до 17 лет просмотр запрещен"
-break
-  case "rx":
-    var rating = "Rx"
-    var rating_desc = "Хентай (￢‿￢)"
 break
   default:
     var rating = null
@@ -367,9 +389,9 @@ break
 }
 
 
-        return {
+        const resultat = {
             titles: {
-              russian: data.russian,
+              russian: datas.data.data[0].titles.ru,
               english: title_en,
               original: datas.data.data[0].titles.ja,
               romaji: datas.data.data[0].titles.romaji
@@ -379,13 +401,7 @@ break
                 normal: datas.data.data[0].posterUrl,
                 preview: datas.data.data[0].posterUrlSmall
               },
-              shikimori: {
-                normal: "https://shikimori.one" + data.image.original,
-                preview: "https://shikimori.one" + data.image.preview,
-                x96: "https://shikimori.one" + data.image.x96,
-                x48: "https://shikimori.one" + data.image.x48
-
-              },
+              mal: data.data.data.images,
               kinopoisk: {
                 normal: kp_poster,
                 preview: kp_preview
@@ -418,27 +434,43 @@ break
             },
             studios: studios,
             genres: genres,
-            descriptions: descriptions,
+            descriptions: {
+              ru: descriptions,
+              en: [
+                {
+                  source: "myanimelist.net",
+                  value: data.data.data.synopsis
+                },
+                {
+                  source: "anilist.co",
+                  value: dataid.data.data.Media.description
+                }
+              ]
+            },
             rating: {
               type: rating,
               description: rating_desc
             },
-            airing: airing_ep,
+            airing: {
+              is_airing_now: data.data.data.airing,
+              airing_ep: airing_ep == undefined ? null : airing_ep,
+              aired: data.data.data.aired.prop
+            },
             season: {
               label: datas.data.data[0].season,
               year: datas.data.data[0].year
             },
             meta: {
-              slogan: kp_slogan,
+              slogan: kp_slogan == undefined ? null : kp_slogan,
               origin_country: country,
-              duration: data.duration,
+              duration: data.data.data.duration.replace("hr", "час").replace("min", "минут").replace(" per ep", "/эпизод"),
               episodes_count: datas.data.data[0].numberOfEpisodes,
               titles: datas.data.data[0].allTitles,
               color: color
             },
             services: {
-              shikimori: data.id,
-              mal: data.id,
+              shikimori: data.data.data.mal_id,
+              mal: data.data.data.mal_id,
               anime365: datas.data.data[0].id,
               worldart: datas.data.data[0].worldArtId == 0 ? null : datas.data.data[0].worldArtId,
               anidb: datas.data.data[0].aniDbId == 0 ? null : datas.data.data[0].aniDbId,
@@ -461,9 +493,14 @@ break
 
 
           }
+          
+          return resultat
 
       }))
-    })
+      .catch((err) => {
+        return "not found"
+      })
+    
 }
 
 function searchAnime(q, res) {

@@ -14,7 +14,6 @@ async function init() {
     await redisClient.connect();
     return redisClient
 }
-db.redis = redis;
 db.init = init;
 
 module.exports = db;
